@@ -1,0 +1,99 @@
+Shrink and re-attach Azure Ubuntu VM image walkthough
+=====================================================
+
+* Disclaimer
+
+Under no circomstances whatsover shall the author of this guide assume any liability for you following instructions contain herein. 
+
+Make sure you backed up all your data. Proceed and use at your risk. 
+
+* General considerations:
+
+This is a guide applies where you 
+
+     - already have an existing Gen1 VM with a managed disk and Linux OS
+     - would like to shrink ubuntu / ext4 partition and hence the overall managed disk size.
+
+Ideally you would prepare your VM on perimises, upload it to a managed disk and create a VM. That way you have maximum flexibility over the ending managed disk size.
+
+If you are taking advantage of 12 months Azure free try period and deploying it to the (free) Standard B1s instance, consider choosing the managed 64GB P4 (Premium SSD) storage - chosing smaller or different storage would result in storage $ charges (at the time of writing march 2020). 
+
+
+To complete the walkthrough you would need adequate HD space on your on-perimises hardware and GParted livecd iso.
+
+* Exporting VM OsDisk
+
+Instructions are via Azure web portal, similar operations could be done using Azure powershell.
+
+1) Make sure that your user is setup with password (and not only with ssh certificate) if you want to login once VM booted on-peremises
+2) Stop the VM (and check that it is Gen 1 VM - under VM properties -> VM generation V1). This guide is for Gen1
+3) Find the disk in Azure portal and create a snapshot
+4) Export the snapshot - generate URL and download it with VHD extension
+
+* Modifying partitions and shrinking VHD on Hyper-V host
+
+1) Download GParted liveCD (iso) image
+2) Create a new VM in Hyper-V manager, make sure you select Generation 1 VM. Select no Network interfaces.
+3) Modify boot order so that the CD is first
+4) Configure first IDE controller - assign a DVD and select GParted liveCD image
+5) Configure second IDE controller
+     - create a new hard disk -> select downloaded VHD image
+     - do Edit operation and convert it to Fixed VHDX image
+     - make sure you have selected that new VHDX image
+6) Boot VM -> it should boot into GParted Live CD
+7) Open Terminal window and type: sudo zerofree /dev/sda1
+     - this command writes zeros into unused device blocks (which allows Hyper-V to shrink the image later on)
+8) After zeroing unused blocks, run Gparted and resize the sda1 partition (i resized to 3864 MB). 
+9) Commit/write changes in Gparted and stop/shutdown VM
+
+* Shrinking VHD and correcting disk and partition table data
+
+1) Once VM stopped, again re-attach GParted liveCD DVD
+2) Click on controller with VHDX image, click on Edit operation and select Shrink. I selected 4GB (which was the mimimum)
+3) Resulting VHDX size reads 4,198,400KB
+4) Make sure it is attached to VM and boot it
+5) Upon booting, GParted will complain about invalid disk data
+6) Repair disk size and partition table data 
+     - Following steps taken from comments left by Kori Maleski on https://www.altaro.com/hyper-v/shrink-hyper-v-virtual-disk-vhd-vhdx/
+     - Open Terminal and type: sudo gdisk /dev/sda
+          choose v to verify disk partitions and see errors.
+          choose r to access recovery commands
+          choose e to fix the partitions
+          select Y
+          choose w to write fixes
+          select Y
+          
+          >sudo fdisk -l
+
+          This will show your partitions are recovered or you may open GParted to view as well.
+7) Shutdown VM
+8) Check that DVD with GParted liveCD is disconnected in VM settings, and boot the VM
+9) VM should boot into your image, and if you have credentials for your user - you can login
+10) If you do not have user credentials but need to login, follow these instructions:
+     https://docs.microsoft.com/en-us/azure/virtual-machines/troubleshooting/reset-password
+
+* Converting back to VHD and uploading to Azure
+
+1) Disconnect VHDX image from the VM
+2) From Hyper-V actions, select Edit Disk and select the shrunk VHDX image
+3) Choose Convert -> VHD action -> Fixed Size
+4) You should have your VHD image prepared
+5) Upload to Azure via CLI - here creating a managed disk first and uploading VHD
+     https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-upload-vhd-to-managed-disk-cli
+6) Alternatively you can upload it to a storage account and create managed disk from VHD image later
+     https://www.testhouse.net/blogs/how-to-upload-a-virtual-machine-to-the-cloud-for-microsoft-azure/
+
+Another alternative is to use Azure Storage Explorer GUI front end. There (once you setup storage account in Azure web portal) you can
+     - directly create a managed disk and upload the VHD
+     - create a BLOB container and upload the VHD. 
+
+Azure Storage Manager is available for linux, macos and windows: https://azure.microsoft.com/en-us/features/storage-explorer/?cdn=disable
+
+
+* Switch the OsDisk of the VM
+
+Follow instructions here to swap OS disk once VM is stopped:
+
+https://docs.microsoft.com/en-us/azure/virtual-machines/windows/os-disk-swap
+
+Untested alternative: under Azure web portal -> VM Disks, choose Swap OS disk/
