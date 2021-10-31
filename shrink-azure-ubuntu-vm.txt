@@ -3,7 +3,7 @@ Shrink and re-attach Azure Ubuntu VM image walkthough
 
 * Disclaimer
 
-Under no circomstances whatsover shall the author of this guide assume any liability for you following instructions contain herein. 
+Under no circomstances whatsoever shall the author of this guide assume any liability for you following instructions contain herein. 
 
 Make sure you backed up all your data. Proceed and use at your risk. 
 
